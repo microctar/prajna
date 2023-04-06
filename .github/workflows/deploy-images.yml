@@ -39,7 +39,7 @@ jobs:
           context: . 
           file: ./dockerfiles/ubuntu_dev.dockerfile
           push: true
-          tags: prajna:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Build and push cuda Docker image
@@ -48,5 +48,5 @@ jobs:
           context: .
           file: ./dockerfiles/ubuntu_dev_nvgpu.dockerfile
           push: true
-          tags: prajna-cuda:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cuda
           labels: ${{ steps.meta.outputs.labels }}
