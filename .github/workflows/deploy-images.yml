@@ -4,14 +4,6 @@ on:
   push:
     branches:
       - dev
-    paths:
-      - dockerfiles
-
-  pull_request:
-    branches:
-      - dev
-    paths:
-      - dockerfiles
 
 env:
   REGISTRY: ghcr.io
