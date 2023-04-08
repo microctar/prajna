@@ -10,20 +10,20 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   linux:
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      image: ghcr.io/microctar/prajna:latest
       options: --privileged
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Prepare container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v3
 
       - name: Fetch submodules
@@ -51,12 +51,16 @@ jobs:
   cuda:
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cuda
+      image: ghcr.io/microctar/prajna:cuda
       options: --privileged
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Prepare container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v3
 
       - name: Fetch submodules
@@ -123,7 +127,8 @@ jobs:
           sha256sum prajna-linux64-cuda.tar.gz > prajna-linux64-cuda.tar.gz.sha256sum
           echo "SHA_LINUX_64_CUDA_TAR=$(cat prajna-linux64-cuda.tar.gz.sha256sum)" >> $GITHUB_ENV
 
+
       - name: Publish release
         run: |
-          gh release create $TAG_NAME $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/*
-          gh release create stable $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/*
+          gh release create $TAG_NAME $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/* prajna-linux64-cuda/*
+          gh release create stable $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/* prajna-linux64-cuda/*
