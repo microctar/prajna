@@ -1,0 +1,129 @@
+name: release
+
+on:
+  push:
+    workflow_dispatch:
+      inputs:
+        tag_name:
+          description: 'Tag name for release'
+          required: true
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      options: --privileged
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch submodules
+        run: ./scripts/clone_submodules.sh --depth=10
+
+      - name: Configure
+        run: ./scripts/configure.sh Release -DWITH_TLS=OFF -DPRAJNA_BUILD_JUPYTER_XEUS=ON -DPRAJNA_WITH_GPU=OFF
+
+      - name: Build release
+        id: build
+        run: |
+          cd ./build_Release
+          make -j4
+          cd ./bin
+          tar -czpf prajna-linux64.tar.gz prajna
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: prajna-linux64
+          path: |
+            build_Release/bin/prajna-linux64.tar.gz
+          retention-days: 1
+
+
+  cuda:
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cuda
+      options: --privileged
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch submodules
+        run: ./scripts/clone_submodules.sh --depth=10
+
+      - name: Configure
+        run: ./scripts/configure.sh Release -DWITH_TLS=OFF -DPRAJNA_BUILD_JUPYTER_XEUS=ON -DPRAJNA_WITH_GPU=ON
+
+      - name: Build release
+        id: build
+        run: |
+          cd ./build_Release
+          make -j4
+          cd ./bin
+          tar -czpf prajna-linux64-cuda.tar.gz prajna
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: prajna-linux64-cuda
+          path: |
+            build_Release/bin/prajna-linux64-cuda.tar.gz
+          retention-days: 1
+
+  publish:
+    needs: [linux, cuda]
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y gettext-base
+
+      - if: github.event_name == 'workflow_dispatch'
+        run: echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+
+      - if: github.event_name == 'push'
+        run: |
+          TAG_NAME=${{ github.ref }}
+          echo "TAG_NAME=${TAG_NAME#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Configure environment
+        run: |
+          (echo 'SUBJECT=Prajna release build';
+           echo 'PRERELEASE=') >> $GITHUB_ENV
+          gh release delete stable --yes || true
+          git push origin :stable || true
+
+      - name: Generate Linux64 SHA256 checksums
+        run: |
+          cd ./prajna-linux64
+          sha256sum prajna-linux64.tar.gz > prajna-linux64.tar.gz.sha256sum
+          echo "SHA_LINUX_64_TAR=$(cat prajna-linux64.tar.gz.sha256sum)" >> $GITHUB_ENV
+
+      - name: Generate Linux64 with CUDA SHA256 checksums
+        run: |
+          cd ./prajna-linux64-cuda
+          sha256sum prajna-linux64-cuda.tar.gz > prajna-linux64-cuda.tar.gz.sha256sum
+          echo "SHA_LINUX_64_CUDA_TAR=$(cat prajna-linux64-cuda.tar.gz.sha256sum)" >> $GITHUB_ENV
+
+      - name: Publish release
+        run: |
+          gh release create $TAG_NAME $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/*
+          gh release create stable $PRERELEASE --title "$SUBJECT" --target $GITHUB_SHA prajna-linux64/*
